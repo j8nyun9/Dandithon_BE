@@ -1,0 +1,9 @@
+{
+  "name": "dandi-vms",
+  "main": "vms-cloudflare-probe.js",
+  "compatibility_date": "2026-11-07",
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "placement": { "region": "aws:ap-northeast-2" },
+  "keep_vars": true
+}
