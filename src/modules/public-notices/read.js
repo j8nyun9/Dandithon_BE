@@ -16,7 +16,7 @@ function plain(html){
  return html.replace(/<[^>]*>/g,' ').replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Math.min(Number(n),0x10ffff))).replace(/&#x([0-9a-f]+);/gi,(_,n)=>String.fromCodePoint(Math.min(parseInt(n,16),0x10ffff))).replace(/&(?:nbsp|amp|lt|gt|quot|apos);/gi,m=>({'&nbsp;':' ','&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'"}[m.toLowerCase()]||' ')).replace(/\s+/g,' ').trim().slice(0,500);
 }
 function scrub(value){return value.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[연락처 제외]').replace(/(?:\+82[- ]?)?0\d{1,2}[-. )]?\d{3,4}[-. ]?\d{4}/g,'[연락처 제외]');}
-const allowedLabels=new Map([['모집기간','application_period'],['봉사활동처','organization'],['모집기관','organization'],['활동분야','category'],['봉사분야','category'],['봉사지역','region'],['봉사장소','place'],['활동기간','activity_period'],['봉사기간','activity_period'],['봉사대상','beneficiaries'],['자격요건','eligibility'],['모집상태','status']]);
+const allowedLabels=new Map([['모집기간','application_period'],['봉사활동처','organization'],['모집기관','organization'],['활동분야','category'],['봉사분야','category'],['봉사지역','region'],['봉사장소','place'],['활동기간','activity_period'],['봉사기간','activity_period'],['봉사대상','beneficiaries'],['자격요건','eligibility'],['봉사자유형','eligibility'],['모집상태','status']]);
 export function extractNotice(html,source){
  if(typeof html!=='string'||html.length>2_000_000)throw new Error('공고 내용을 읽을 수 없습니다.');
  // Page content may contain applicant and contact details: only whitelist titles and labelled public program fields.
@@ -25,9 +25,17 @@ export function extractNotice(html,source){
  for(const match of safe.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th\s*>\s*<td\b[^>]*>([\s\S]*?)<\/td\s*>/gi)){
   const label=plain(match[1]).replace(/\s/g,'');const key=allowedLabels.get(label);if(key&&!fields[key])fields[key]=scrub(plain(match[2]));
  }
+ // 1365 uses description lists and a dedicated heading rather than table cells.
+ if(source.kind==='1365')for(const match of safe.matchAll(/<dt\b[^>]*>([\s\S]*?)<\/dt\s*>\s*<dd\b[^>]*>([\s\S]*?)<\/dd\s*>/gi)){
+  const label=plain(match[1]).replace(/\s/g,'');const key=allowedLabels.get(label);if(key&&!fields[key])fields[key]=scrub(plain(match[2].replace(/<a\b[^>]*>[\s\S]*?<\/a\s*>/gi,' ')));
+ }
  const anchor=safe.search(/<th\b[^>]*>\s*(?:<[^>]+>\s*)*(?:모집\s*기간|봉사\s*활동처|모집\s*기관)/i);
  const headings=[...safe.matchAll(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]\s*>/gi)].map(m=>({title:scrub(plain(m[1])),index:m.index})).filter(x=>x.title&&x.title.length<=200&&!/^(봉사자\s*모집(?:\s*및\s*신청)?|봉사신청|사회복지자원봉사(?:인증관리)?|카카오맵\s*지도|지도)$/i.test(x.title));
- const before=anchor<0?[]:headings.filter(x=>x.index<anchor);const title=(before.at(-1)||headings[0])?.title||'';
+ const before=anchor<0?[]:headings.filter(x=>x.index<anchor);
+ const officialHeading=source.kind==='1365'?safe.match(/<h3\b[^>]*class=["'][^"']*\btit_board_view\b[^"']*["'][^>]*>([\s\S]*?)<\/h3\s*>/i):null;
+ const officialTitle=officialHeading?scrub(plain(officialHeading[1].replace(/<span\b[^>]*>[\s\S]*?<\/span\s*>/gi,' '))):'';
+ const title=officialTitle||(before.at(-1)||headings[0])?.title||'';
+ if(!fields.status&&officialHeading){const badge=officialHeading[1].match(/<span\b[^>]*>\s*\(?\s*(모집\s*중|모집\s*완료|모집\s*마감)\s*\)?\s*<\/span>/i);if(badge)fields.status=badge[1].replace(/\s/g,'');}
  // Only a status badge immediately adjacent to this notice's heading can establish recruitment state.
  const heading=before.at(-1)||headings[0];if(!fields.status && heading){const context=safe.slice(Math.max(0,heading.index-160),Math.min(safe.length,heading.index+350));const badge=context.match(/<span\b[^>]*class=["'][^"']*(?:status|state|badge)[^"']*["'][^>]*>\s*(모집\s*중|모집\s*마감|모집\s*완료)\s*<\/span>/i);if(badge)fields.status=badge[1].replace(/\s/g,'');}
  const lines=[title&&`활동명: ${title}`,...Object.entries(fields).map(([k,v])=>`${k}: ${v}`)].filter(Boolean);

@@ -7,6 +7,7 @@ import {categories,migrateWeights} from './modules/categories.js';
 export {categories} from './modules/categories.js';
 import {fetchNotice,diagnoseNoticeConnection} from './modules/public-notices/read.js';
 import {searchOfficialSources,classifyNotice,generateSuggestion} from './modules/public-notices/search.js';
+import {searchOfficial1365} from './modules/public-notices/official-1365.js';
 import {verifiedCandidateUrls,noticeAssessment} from './modules/public-notices/automation.js';
 
 const secret = process.env.DANDI_SECRET || 'local-demo-secret-do-not-deploy';
@@ -66,7 +67,7 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
    const actor=get("SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1");
    const semester=get('SELECT * FROM semesters WHERE start_at<=? AND end_at>=? ORDER BY start_at DESC LIMIT 1',todayKst(),todayKst());
    if(!actor||!semester)throw Error('관리자 계정과 현재 학기가 필요합니다.');
-   const searches=await Promise.allSettled(['1365.go.kr','vms.or.kr'].map(domain=>(adapters.search||searchOfficialSources)({apiKey:process.env.OPENAI_API_KEY,model:process.env.OPENAI_SEARCH_MODEL||'gpt-6-luna',domains:domain==='1365.go.kr'?[]:[domain],prompt:`${domain} 봉사활동의 공식 상세 링크를 검색하세요. 1365의 경우 대학이나 공공기관 공지에서 공식 1365 링크를 찾아도 됩니다. 기준 날짜는 ${todayKst()} 입니다. 그 날짜에 모집 중인 대구 및 경북 지역 봉사활동의 개별 상세 공고를 가능한 많이 검색하세요. 과거에 종료된 공고는 제외하세요. 최근 공고의 개별 상세 URL을 최대 ${domain==='1365.go.kr'?8:15}개만 JSON {"items":[{"url":"https://..."}]} 형식으로 반환하세요. 출처가 확인되지 않는 URL을 만들지 마세요.`})));
+   const searches=await Promise.allSettled(['1365.go.kr','vms.or.kr'].map(domain=>(adapters.search||(domain==='1365.go.kr'?searchOfficial1365:searchOfficialSources))({apiKey:process.env.OPENAI_API_KEY,model:process.env.OPENAI_SEARCH_MODEL||'gpt-6-luna',today:todayKst(),domains:domain==='1365.go.kr'?[]:[domain],prompt:`${domain} 봉사활동의 공식 상세 링크를 검색하세요. 기준 날짜는 ${todayKst()} 입니다. 그 날짜에 모집 중인 대구 및 경북 지역 봉사활동의 개별 상세 공고를 가능한 많이 검색하세요. 과거에 종료된 공고는 제외하세요. 최근 공고의 개별 상세 URL을 최대 15개만 JSON {"items":[{"url":"https://..."}]} 형식으로 반환하세요. 출처가 확인되지 않는 URL을 만들지 마세요.`})));
    renewLease();
    const successful=searches.filter(x=>x.status==='fulfilled').map(x=>x.value);if(!successful.length)throw searches[0].reason;
    const search1365=searches[0].status==='fulfilled'?verifiedCandidateUrls(searches[0].value,{allow1365Suggestions:true}):[];const searchVms=searches[1].status==='fulfilled'?verifiedCandidateUrls(searches[1].value):[];const earlier=all('SELECT url FROM automation_candidates ORDER BY checked_at DESC').map(x=>x.url);const urls=[...new Set([...search1365,...searchVms,...earlier])].slice(0,40);const sourceFailures=searches.length-successful.length;const perSource=['1365.go.kr','vms.or.kr'].map((domain,i)=>{const outcome=searches[i];return outcome.status==='fulfilled'?`${domain.startsWith('1365')?'1365':'VMS'} ${verifiedCandidateUrls(outcome.value,{allow1365Suggestions:i===0}).length}건${outcome.value.partial?'(일부 결과)':''}`:`${domain.startsWith('1365')?'1365':'VMS'} 검색 실패: ${String(outcome.reason?.message||'원인 미확인').slice(0,180)}`;}).join(', ');
@@ -75,9 +76,12 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
    const existing=all("SELECT m.source_url FROM automatic_mission_sources a JOIN missions m ON m.id=a.mission_id WHERE m.archived_at IS NULL AND m.status='open'").map(x=>x.source_url);
    const checkedUrls=[...new Set([...urls,...existing])].slice(0,80);
    for(const url of checkedUrls){let title=null,stage='공식 공고 읽기';try{
-    renewLease();const notice=await (adapters.fetchNotice||fetchNotice)(url);renewLease();title=notice.title;const assessment=noticeAssessment(notice,todayKst()),dates=assessment.dates;
+    renewLease();const notice=await (adapters.fetchNotice||fetchNotice)(url);renewLease();title=notice.title;
+    const officialRegion=notice.source==='1365'&&searches[0].status==='fulfilled'?searches[0].value.regions?.[notice.external_id]:null;
+    if(officialRegion&&!notice.fields.region){notice.fields.region=officialRegion;notice.notice+=`\n봉사지역(공식 검색): ${officialRegion}`;}
+    const assessment=noticeAssessment(notice,todayKst()),dates=assessment.dates;
     const prior=get('SELECT mission_id FROM automatic_mission_sources WHERE source_kind=? AND external_id=?',notice.source,notice.external_id);
-    if(notice.source==='1365'&&!/(대구|경북|경상북도)/.test(notice.fields.region||'')){if(prior)run('UPDATE automatic_mission_sources SET verified_until=0 WHERE mission_id=?',prior.mission_id);record(url,notice.title,'공식 공고에서 대구·경북 활동 지역을 확인하지 못했습니다.');continue;}
+    if(notice.source==='1365'&&!/(대구|경북|경상북도)/.test(notice.fields.region||'')){if(prior&&notice.fields.region)run('UPDATE automatic_mission_sources SET verified_until=0 WHERE mission_id=?',prior.mission_id);record(url,notice.title,notice.fields.region?'공식 공고가 대구·경북 활동 지역에 해당하지 않습니다.':'공식 지역 검색 목록에서 활동 지역을 재확인하지 못했습니다.');continue;}
     if(!dates){if(prior)run('UPDATE automatic_mission_sources SET verified_until=0 WHERE mission_id=?',prior.mission_id);record(url,notice.title,assessment.reason);continue;}
     if(prior){run('UPDATE automatic_mission_sources SET verified_until=? WHERE mission_id=?',Date.now()+noticeValidity,prior.mission_id);run('UPDATE missions SET application_start=?,application_end=?,application_period=?,application_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',dates.start,dates.end,dates.start&&dates.end?`${dates.start} ~ ${dates.end}`:'모집 기간 미정',assessment.periodUnconfirmed?'모집 기간 미정: 공식 공고에서 신청 가능 여부를 확인하세요.':assessment.statusUnconfirmed?'모집 상태 미확인: 신청 가능 여부를 공식 공고에서 확인하세요.':'공식 공고에서 신청 조건을 확인하세요.',prior.mission_id);record(url,notice.title,assessment.statusUnconfirmed?'이미 등록됨 · 모집 상태 미확인':'이미 등록된 활동입니다.');continue;}
     if(!urls.includes(url))continue;
@@ -186,6 +190,7 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
    }
    if(method==='GET' && p==='/api/missions') return {status:200,data:discoverableMissions().map(m=>{const parsed=parseMission(m);if(u.role!=='guest')return parsed;const {id,title,source_url,apply_url,eligibility,application_period,application_note,completion_policy,weights,is_demo,application_start,application_end}=parsed;return {id,title,source_url,apply_url,eligibility,application_period,application_note,completion_policy,weights,is_demo,application_start,application_end};})};
    if(method==='POST' && p==='/api/admin/notice-connection-check') {role(u,'admin');try{return {status:200,data:await (adapters.diagnoseNoticeConnection||diagnoseNoticeConnection)(body.url)};}catch(e){throw err(400,e.message);}}
+   if(method==='POST' && p==='/api/admin/notice-1365-list-check') {role(u,'admin');try{const result=await (adapters.searchOfficial1365||searchOfficial1365)({today:todayKst()});return {status:200,data:{candidates:result.items.length,daegu:Object.values(result.regions).filter(r=>r==='대구광역시').length,gyeongbuk:Object.values(result.regions).filter(r=>r==='경상북도').length,partial:!!result.partial}};}catch(e){throw err(400,e.message);}}
    if(method==='POST' && p==='/api/admin/public-notice/preview') {role(u,'admin');let notice;try{notice=await fetchNotice(body.url);}catch(e){throw err(400,e.message);}const suggestion=await ai('structure',{notice:notice.notice});return {status:200,data:{notice,suggestion}};}
    if(method==='POST' && p==='/api/ai/structure') {role(u,'admin','partner'); if(typeof body.notice!=='string'||!body.notice.trim()||body.notice.length>12000) throw err(400,'공고는 1~12000자여야 합니다.'); return {status:200,data:await ai('structure',{notice:body.notice})};}
    if(method==='POST' && p==='/api/ai/recommend') {role(u,'student'); const missions=discoverableMissions().map(parseMission).map(({id,title,eligibility,application_period,weights})=>({id,title,eligibility,application_period,weights})); return {status:200,data:await ai('recommend',{profile:body.profile||{},missions})};}

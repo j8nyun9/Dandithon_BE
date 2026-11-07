@@ -31,6 +31,8 @@ Render 무료 서버는 비활성화 후 요청이 들어오면 자동으로 깨
 
 관리자 `POST /api/admin/notice-connection-check`는 `{ "url": "공식 개별 공고 URL" }`을 받아 최대 30초간 직접 연결만 확인합니다. 1365/VMS의 허용된 공고 URL만 요청하며 공고를 저장하거나 AI를 호출하지 않습니다. 연결 성공, HTTP 상태, 시간 또는 안전하게 분류된 네트워크 오류만 반환합니다. HTTP 성공은 공고 내용의 분석·등록 성공을 뜻하지 않습니다.
 
+관리자 `POST /api/admin/notice-1365-list-check`는 1365 공식 지역 목록의 대구·경북 후보 건수와 부분 실패 여부만 확인하며 공고를 저장하거나 AI를 호출하지 않습니다. 실제 수집은 지역 검색 결과에 나타난 모집 중 공고를 상세 원문에서 다시 확인한 뒤 AI로 분류합니다.
+
 미션 등록: `{"organization_id":1,"semester_id":1,"title":"시연 멘토링","notice":"기관 제공 시연 원문","source_url":"https://example.org/notice","apply_url":"https://example.org/apply","eligibility":"대학생","application_note":"선착순 조기 마감","application_start":"2026-11-07","application_end":"2026-11-30","completion_policy":"기관 확인","rules_version":"demo-v1","weights":{"education":0.5,"healthcare":0.5},"contribution_value":2,"is_demo":true}`. 최대 2축, 가중치 합계 1. URL은 HTTPS만 허용합니다. **제출자는 공고와 분류를 확인해야 합니다.**
 
 상태 변경: `{"user_id":1,"status":"approved","source":"기관 확인","external_record_id":"DEMO-001"}`. `applied`, `started`, `pending`, `approved`, `rejected`, `cancelled` 상태가 있으며 허용된 전환만 가능합니다. 승인에는 별도의 출처나 실적 ID가 필수는 아니며 담당자가 완료 사실을 확인해야 합니다. 클릭은 실적 상태를 자동 변경하지 않습니다.
