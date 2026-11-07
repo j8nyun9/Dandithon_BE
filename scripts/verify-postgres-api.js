@@ -24,13 +24,17 @@ try {
  };
  const adminToken=await login('admin@demo.local','DemoAdmin!123');
  const student=await login('knu@demo.local','DemoStudent!123');
+ const profile=await app.dispatch('GET','/api/v1/me',{},student);assert.equal(profile.status,200);assert.equal(Object.hasOwn(profile.data,'password_hash'),false);
+ assert.equal((await app.dispatch('GET','/api/v1/schools')).data.length,5);
  const mission={organization_id:1,semester_id:1,title:'이관 검증 활동',notice:'가상 공고',source_url:'https://example.org/source',apply_url:'https://example.org/apply',eligibility:'학생',completion_policy:'관리자 확인',rules_version:'demo-v1',application_start:'2020-01-01',application_end:'2099-12-31',weights:{education:1},is_demo:true};
  const created=await app.dispatch('POST','/api/missions',mission,adminToken);assert.equal(created.status,201);
  const id=created.data.id;assert.ok(id>0);
  assert.equal((await app.dispatch('GET','/api/missions')).data.length,1);
+ assert.equal((await app.dispatch('GET','/api/v1/missions',{},student)).data[0].classification_status,'classified');
  assert.equal((await app.dispatch('POST',`/api/missions/${id}/application-confirmation`,{},student)).status,200);
  assert.equal((await app.dispatch('POST',`/api/missions/${id}/submit`,{},student)).status,200);
  assert.equal((await app.dispatch('POST',`/api/missions/${id}/verification`,{user_id:1,status:'approved'},adminToken)).status,200);
+ assert.equal((await app.dispatch('GET','/api/v1/me/participations',{},student)).data[0].status,'approved');
  assert.equal((await app.dispatch('POST',`/api/missions/${id}/verification`,{user_id:1,status:'approved'},adminToken)).status,400);
  assert.equal((await app.dispatch('GET','/api/community-progress')).data.completed_count,1);
  assert.equal((await app.dispatch('GET','/api/league')).data.schools.find(s=>s.school_id===1).completed_count,1);

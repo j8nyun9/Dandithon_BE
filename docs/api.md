@@ -7,6 +7,7 @@
 | GET | /api/health | 상태 |
 | GET | /api/activities | 기존 FE 호환 데이터. minutes·points는 임시 0 |
 | POST | /api/auth/login | `{ "email": "knu@demo.local", "password": "DemoStudent!123" }` → 토큰, 역할, 학교 ID와 이름 (`name`, 미등록 시 null) |
+
 | GET | /api/missions | 공개 활동 목록. 로그인한 학생에게는 신청한 활동을 제외 |
 | GET | /api/missions/1 | 상세 및 조회 이벤트 |
 | POST | /api/missions/1/click | 학생 클릭 기록 및 공식 신청 URL. 클릭은 신청 아님 |
@@ -17,6 +18,14 @@
 | POST | /api/admin/import-csv | 관리자/기관 CSV 일괄 승인. 오류시 전부 롤백 |
 | GET | /api/league?semester_id=1 | 학교별 종합값과 여섯 축 |
 | GET | /api/partner/funnel?organization_id=1 | 소속 기관별 집계. 상태별 인원, 5명 미만 null |
+
+### 데이터 계약 v1
+
+기존 API는 유지하며 응답은 동일하게 `{data: ...}`로 감쌉니다. `GET /api/v1/schools`는 공개 학교 목록, `GET /api/v1/me`는 로그인한 본인 계정, `GET /api/v1/missions`는 로그인한 사용자에게 현재 조회 가능한 활동, `GET /api/v1/me/participations`와 `GET /api/v1/me/clicks`는 로그인한 학생 본인의 기록입니다. 관련 쓰기 작업은 기존 신청 표시·클릭·확인 요청·관리자 승인 API를 사용합니다. 클릭은 신청 또는 완료가 아닙니다.
+
+보안상 비밀번호나 `password_hash`는 어떤 응답에도 포함하지 않습니다. 기존 데이터에 생성·수정일이 저장되지 않은 계정과 활동은 `created_at`, `updated_at`을 null로 반환하며 임의의 날짜를 만들지 않습니다. 신청 표시만 있고 인증 행이 아직 없으면 참여 `id`는 null입니다. 관리자가 바로 승인한 이전 기록은 `applied_at`이 null일 수 있습니다. 기존 `started` 상태와 기관 역할 `partner`도 호환성을 위해 유지합니다. `submitted_at`, `approved_at`은 실제 감사 기록이 있을 때만 반환합니다. 기존 시스템은 심사 메모를 저장하지 않아 `review_note`는 null입니다. 현재 등록된 활동은 가중치의 유효성으로 분류 여부를 나타내며, 분류 실패한 후보나 `draft` 활동을 등록·조회하는 기능은 아직 없습니다. 학교 수치가 출처 없는 시연 값이면 출처와 기준연도는 null입니다.
+
+Render 무료 서버는 비활성화 후 요청이 들어오면 자동으로 깨어납니다. 깨어나는 동안 첫 요청이 지연될 수 있으며, 잠든 동안 정기 수집은 실행되지 않습니다.
 
 미션 등록: `{"organization_id":1,"semester_id":1,"title":"시연 멘토링","notice":"기관 제공 시연 원문","source_url":"https://example.org/notice","apply_url":"https://example.org/apply","eligibility":"대학생","application_note":"선착순 조기 마감","application_start":"2026-11-07","application_end":"2026-11-30","completion_policy":"기관 확인","rules_version":"demo-v1","weights":{"education":0.5,"healthcare":0.5},"contribution_value":2,"is_demo":true}`. 최대 2축, 가중치 합계 1. URL은 HTTPS만 허용합니다. **제출자는 공고와 분류를 확인해야 합니다.**
 

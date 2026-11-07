@@ -19,11 +19,12 @@ try {
  if(semesters.rowCount!==1) throw Error('현재 학기를 하나로 확정할 수 없습니다.');
  const semesterId=semesters.rows[0].id;
  await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT');
+ await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TEXT');
  for(const student of students){
   const existing=await db.query('SELECT id,role,school_id,password_hash FROM users WHERE email=$1',[student.email]);
   let id;
   if(existing.rowCount){const user=existing.rows[0];if(user.role!=='student'||user.school_id!==student.school_id||!verify(password,user.password_hash)) throw Error('기존 계정과 입력 목록이 충돌합니다.');id=user.id;await db.query('UPDATE users SET name=$1 WHERE id=$2',[student.name,id]);}
-  else {const inserted=await db.query("INSERT INTO users(email,password_hash,role,school_id,name) VALUES($1,$2,'student',$3,$4) RETURNING id",[student.email,hash(password),student.school_id,student.name]);id=inserted.rows[0].id;}
+  else {const inserted=await db.query("INSERT INTO users(email,password_hash,role,school_id,name,created_at) VALUES($1,$2,'student',$3,$4,CURRENT_TIMESTAMP::text) RETURNING id",[student.email,hash(password),student.school_id,student.name]);id=inserted.rows[0].id;}
   await db.query('INSERT INTO enrollments(user_id,semester_id,school_id) VALUES($1,$2,$3) ON CONFLICT(user_id,semester_id) DO NOTHING',[id,semesterId,student.school_id]);
   const enrollment=await db.query('SELECT school_id FROM enrollments WHERE user_id=$1 AND semester_id=$2',[id,semesterId]);
   if(enrollment.rows[0]?.school_id!==student.school_id) throw Error('기존 학기 등록 학교와 입력 목록이 충돌합니다.');
