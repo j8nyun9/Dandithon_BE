@@ -48,7 +48,7 @@ async function execute(message){
    const standalone=!inTransaction;
    try {
     if(standalone){await client.query('BEGIN');await client.query(`SET LOCAL search_path TO "${workerData.schema||'public'}"`);}
-    const tableInfo=message.sql.match(/^\s*PRAGMA table_info\((missions|users)\)/i);
+    const tableInfo=message.sql.match(/^\s*PRAGMA table_info\((missions|users|automation_status)\)/i);
     const response=tableInfo
      ?await client.query('SELECT column_name AS name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=$1',[tableInfo[1].toLowerCase()])
      :await client.query(translate(message.sql,message.kind),message.params||[]);

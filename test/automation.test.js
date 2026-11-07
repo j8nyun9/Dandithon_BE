@@ -21,4 +21,23 @@ test('기간 미기재 모집중 공고를 기간 미정으로 등록하고 모�
 
 test('검색 서비스와 AI 분류 실패는 각각 원인을 구분한다',async()=>{const oldMode=process.env.AI_MODE,oldKey=process.env.OPENAI_API_KEY;process.env.AI_MODE='live';process.env.OPENAI_API_KEY='test';const url='https://www.vms.or.kr/partspace/recruitView.do?seq=44';const app=createApp(':memory:',{search:async({domains})=>{if(!domains.length)throw Error('검색 응답 형식 오류');return {items:[{url}],citations:[url]};},fetchNotice:async()=>({source:'VMS',external_id:'44',source_url:url,title:'봉사 활동',notice:'공고',fields:{organization:'기관',status:'모집중',application_period:'2026-09-01 ~ 2027-02-28'}}),classify:async()=>{throw Error('OpenAI API 요청이 실패했습니다 (HTTP 400, 코드 invalid_request_error).');}});try{app.seed();await app.runAutomation();const auth='Bearer '+(await app.dispatch('POST','/api/auth/login',{email:'admin@demo.local',password:'DemoAdmin!123'})).data.token;const result=(await app.dispatch('GET','/api/admin/automation',{},auth)).data;assert.match(result.message,/1365 검색 실패: 검색 응답 형식 오류/);assert.equal(result.candidates[0].title,'봉사 활동');assert.match(result.candidates[0].result,/AI 분류 실패.*HTTP 400/);}finally{app.close();if(oldMode===undefined)delete process.env.AI_MODE;else process.env.AI_MODE=oldMode;if(oldKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=oldKey;}});
 
-test('자동 검색은 24시간에 한 번만 실행되며 관리자 수동 호출도 제한된다',async()=>{const oldMode=process.env.AI_MODE,oldKey=process.env.OPENAI_API_KEY;process.env.AI_MODE='live';process.env.OPENAI_API_KEY='test';let calls=0;const app=createApp(':memory:',{search:async()=>{calls++;return {items:[],citations:[]};}});try{app.seed();await app.runAutomation();assert.equal(calls,2);await app.runAutomation();assert.equal(calls,2);const token='Bearer '+(await app.dispatch('POST','/api/auth/login',{email:'admin@demo.local',password:'DemoAdmin!123'})).data.token;const state=await app.dispatch('GET','/api/admin/automation',{},token);assert.ok(state.data.next_attempt>Date.now());assert.equal((await app.dispatch('POST','/api/admin/automation/run',{},token)).status,429);}finally{app.close();if(oldMode===undefined)delete process.env.AI_MODE;else process.env.AI_MODE=oldMode;if(oldKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=oldKey;}});
+test('관리자 수동 검색은 반복할 수 있고 자동 검색 일정은 바뀌지 않는다',async()=>{
+ const oldMode=process.env.AI_MODE,oldKey=process.env.OPENAI_API_KEY;process.env.AI_MODE='live';process.env.OPENAI_API_KEY='test';
+ let calls=0,gate=null,release;const app=createApp(':memory:',{search:async()=>{calls++;if(gate)await gate;return {items:[],citations:[]};}});
+ try{
+  app.seed();await app.runAutomation();assert.equal(calls,2);await app.runAutomation();assert.equal(calls,2);
+  const admin='Bearer '+(await app.dispatch('POST','/api/auth/login',{email:'admin@demo.local',password:'DemoAdmin!123'})).data.token;
+  const student='Bearer '+(await app.dispatch('POST','/api/auth/login',{email:'knu@demo.local',password:'DemoStudent!123'})).data.token;
+  assert.equal((await app.dispatch('POST','/api/admin/automation/run',{},student)).status,403);
+  const initial=(await app.dispatch('GET','/api/admin/automation',{},admin)).data;assert.ok(initial.next_automatic_attempt>Date.now());assert.equal(initial.next_attempt,null);
+  gate=new Promise(resolve=>{release=resolve;});
+  assert.equal((await app.dispatch('POST','/api/admin/automation/run',{},admin)).status,202);
+  assert.equal((await app.dispatch('POST','/api/admin/automation/run',{},admin)).status,409);
+  release();gate=null;
+  const waitIdle=async()=>{for(let i=0;i<30;i++){const state=(await app.dispatch('GET','/api/admin/automation',{},admin)).data;if(!state.running)return state;await new Promise(resolve=>setImmediate(resolve));}throw Error('수동 검색이 끝나지 않았습니다.');};
+  let state=await waitIdle();assert.equal(calls,4);assert.equal(state.next_automatic_attempt,initial.next_automatic_attempt);
+  assert.equal((await app.dispatch('POST','/api/admin/automation/run',{},admin)).status,202);
+  state=await waitIdle();assert.equal(calls,6);assert.equal(state.next_automatic_attempt,initial.next_automatic_attempt);
+  await app.runAutomation();assert.equal(calls,6);
+ }finally{app.close();if(oldMode===undefined)delete process.env.AI_MODE;else process.env.AI_MODE=oldMode;if(oldKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=oldKey;}
+});

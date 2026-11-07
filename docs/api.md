@@ -27,6 +27,8 @@
 
 Render 무료 서버는 비활성화 후 요청이 들어오면 자동으로 깨어납니다. 깨어나는 동안 첫 요청이 지연될 수 있으며, 잠든 동안 정기 수집은 실행되지 않습니다.
 
+관리자 `POST /api/admin/automation/run`은 진행 중인 검색이 없으면 자동 검색 주기와 관계없이 즉시 수동 검색을 시작합니다. 이미 검색 중일 때는 409를 반환합니다. 수동 검색은 자동 검색 주기를 바꾸지 않습니다. `GET /api/admin/automation`의 `next_automatic_attempt`는 자동 검색 예정 시각이며, 기존 화면에서 수동 검색을 제한하지 않도록 `next_attempt`는 null입니다.
+
 미션 등록: `{"organization_id":1,"semester_id":1,"title":"시연 멘토링","notice":"기관 제공 시연 원문","source_url":"https://example.org/notice","apply_url":"https://example.org/apply","eligibility":"대학생","application_note":"선착순 조기 마감","application_start":"2026-11-07","application_end":"2026-11-30","completion_policy":"기관 확인","rules_version":"demo-v1","weights":{"education":0.5,"healthcare":0.5},"contribution_value":2,"is_demo":true}`. 최대 2축, 가중치 합계 1. URL은 HTTPS만 허용합니다. **제출자는 공고와 분류를 확인해야 합니다.**
 
 상태 변경: `{"user_id":1,"status":"approved","source":"기관 확인","external_record_id":"DEMO-001"}`. `applied`, `started`, `pending`, `approved`, `rejected`, `cancelled` 상태가 있으며 허용된 전환만 가능합니다. 승인에는 별도의 출처나 실적 ID가 필수는 아니며 담당자가 완료 사실을 확인해야 합니다. 클릭은 실적 상태를 자동 변경하지 않습니다.
