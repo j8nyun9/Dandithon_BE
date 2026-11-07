@@ -20,10 +20,11 @@ try {
  await admin.query(readFileSync(fileURLToPath(new URL('../db/postgres-schema.sql',import.meta.url)),'utf8'));
  // Exercise the upgrade from the currently deployed schema.
  await admin.query('ALTER TABLE automation_status DROP COLUMN last_automatic_attempt');
+ await admin.query('ALTER TABLE automation_status DROP COLUMN lock_owner, DROP COLUMN lock_expires_at');
  await admin.query("INSERT INTO automation_status(id,last_attempt,message,created_count) VALUES(1,42,'legacy',0)");
  await admin.query('COMMIT');
  const connect=()=>new PostgresSyncDatabase(process.env.DATABASE_URL,{schema,testMode:true});
- let searches=0;const connection=connect();app=createApp(':memory:',{db:connection,search:async()=>{searches++;return {items:[],citations:[]};}});app.seed();
+ let searches=0,gate=null,release;const connection=connect();app=createApp(':memory:',{db:connection,search:async()=>{searches++;if(gate)await gate;return {items:[],citations:[]};}});app.seed();
  assert.equal(connection.prepare('SELECT last_automatic_attempt FROM automation_status WHERE id=1').get().last_automatic_attempt,42);
  connection.request('test-disconnect');
  assert.equal(connection.prepare('SELECT 1 AS value').get().value,1);
@@ -35,6 +36,9 @@ try {
  };
  const adminToken=await login('admin@demo.local','DemoAdmin!123');
  const student=await login('knu@demo.local','DemoStudent!123');
+ gate=new Promise(resolve=>{release=resolve;});const busyRun=app.runAutomation({force:true});
+ const second=connect();try{const at=Date.now();const blocked=second.prepare('INSERT INTO automation_status(id,last_attempt,message,created_count,last_automatic_attempt,lock_owner,lock_expires_at) VALUES(1,NULL,NULL,0,NULL,?,?) ON CONFLICT(id) DO UPDATE SET lock_owner=excluded.lock_owner,lock_expires_at=excluded.lock_expires_at WHERE automation_status.lock_owner IS NULL OR automation_status.lock_expires_at IS NULL OR automation_status.lock_expires_at<=?').run('second-worker',at+300000,at);assert.equal(blocked.changes,0);}finally{second.close();release();gate=null;}
+ assert.equal((await busyRun).started,true);searches=0;
  await app.runAutomation();assert.equal(searches,2);
  const before=(await app.dispatch('GET','/api/admin/automation',{},adminToken)).data;
  assert.ok(before.next_automatic_attempt>Date.now());assert.equal(before.next_attempt,null);
