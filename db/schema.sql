@@ -11,3 +11,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS unique_external_record ON verifications(extern
 CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY,actor_id INTEGER NOT NULL REFERENCES users(id),action TEXT NOT NULL,mission_id INTEGER,user_id INTEGER,detail TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 
 CREATE TABLE IF NOT EXISTS application_claims (mission_id INTEGER NOT NULL REFERENCES missions(id), user_id INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(mission_id,user_id));
+
+CREATE TABLE IF NOT EXISTS school_semester_population (school_id INTEGER NOT NULL REFERENCES schools(id),semester_id INTEGER NOT NULL REFERENCES semesters(id),student_count INTEGER NOT NULL CHECK(student_count>0),reference_year INTEGER NOT NULL,source_url TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_by INTEGER NOT NULL REFERENCES users(id),PRIMARY KEY(school_id,semester_id));

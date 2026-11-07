@@ -12,5 +12,5 @@ else {
    const raw=Buffer.concat(chunks).toString(), body=raw?JSON.parse(raw):{};
    const result=await app.dispatch(req.method,req.url,body,req.headers.authorization); res.statusCode=result.status;res.end(JSON.stringify(result.error?{error:result.error}:{data:result.data}));
   } catch {res.statusCode=400;res.end(JSON.stringify({error:{code:'BAD_REQUEST',message:'요청 형식 또는 크기 오류'}}));}
- }).listen(port,'127.0.0.1',()=>console.log(`단디 API: http://127.0.0.1:${port}`));
+ }).listen(port,'127.0.0.1',()=>{console.log(`단디 API: http://127.0.0.1:${port}`);app.startAutomation();});
 }
