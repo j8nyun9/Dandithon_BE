@@ -1,0 +1,13 @@
+PRAGMA foreign_keys=ON;
+CREATE TABLE IF NOT EXISTS schools(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);
+CREATE TABLE IF NOT EXISTS semesters(id INTEGER PRIMARY KEY,name TEXT NOT NULL,start_at TEXT NOT NULL,end_at TEXT NOT NULL,cutoff_at TEXT NOT NULL,rules_version TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS organizations(id INTEGER PRIMARY KEY,name TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('student','admin','partner')),school_id INTEGER REFERENCES schools(id),organization_id INTEGER REFERENCES organizations(id));
+CREATE TABLE IF NOT EXISTS enrollments(user_id INTEGER NOT NULL REFERENCES users(id),semester_id INTEGER NOT NULL REFERENCES semesters(id),school_id INTEGER NOT NULL REFERENCES schools(id),PRIMARY KEY(user_id,semester_id));
+CREATE TABLE IF NOT EXISTS missions(id INTEGER PRIMARY KEY,organization_id INTEGER NOT NULL REFERENCES organizations(id),semester_id INTEGER NOT NULL REFERENCES semesters(id),title TEXT NOT NULL,notice TEXT NOT NULL,source_url TEXT NOT NULL,apply_url TEXT NOT NULL,eligibility TEXT NOT NULL,application_period TEXT NOT NULL,completion_policy TEXT NOT NULL,weights TEXT NOT NULL,rules_version TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('open','closed')),is_demo INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY,mission_id INTEGER NOT NULL REFERENCES missions(id),user_id INTEGER NOT NULL REFERENCES users(id),event_type TEXT NOT NULL CHECK(event_type IN ('view','click')),created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS verifications(id INTEGER PRIMARY KEY,mission_id INTEGER NOT NULL REFERENCES missions(id),user_id INTEGER NOT NULL REFERENCES users(id),status TEXT NOT NULL,source TEXT,external_record_id TEXT,reviewed_by INTEGER REFERENCES users(id),updated_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(mission_id,user_id));
+CREATE UNIQUE INDEX IF NOT EXISTS unique_external_record ON verifications(external_record_id) WHERE external_record_id IS NOT NULL AND external_record_id != '';
+CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY,actor_id INTEGER NOT NULL REFERENCES users(id),action TEXT NOT NULL,mission_id INTEGER,user_id INTEGER,detail TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+
+CREATE TABLE IF NOT EXISTS application_claims (mission_id INTEGER NOT NULL REFERENCES missions(id), user_id INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(mission_id,user_id));
