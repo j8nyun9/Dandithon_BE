@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | GET | /api/health | 상태 |
 | GET | /api/activities | 기존 FE 호환 데이터. minutes·points는 임시 0 |
-| POST | /api/auth/login | `{ "email": "knu@demo.local", "password": "DemoStudent!123" }` → 토큰 |
+| POST | /api/auth/login | `{ "email": "knu@demo.local", "password": "DemoStudent!123" }` → 토큰, 역할, 학교 ID와 이름 (`name`, 미등록 시 null) |
 | GET | /api/missions | 공개 활동 목록. 로그인한 학생에게는 신청한 활동을 제외 |
 | GET | /api/missions/1 | 상세 및 조회 이벤트 |
 | POST | /api/missions/1/click | 학생 클릭 기록 및 공식 신청 URL. 클릭은 신청 아님 |

@@ -24,6 +24,8 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
  const db = adapters.db || new DatabaseSync(path); db.exec(readFileSync(fileURLToPath(new URL('../db/schema.sql',import.meta.url)),'utf8')); db.exec('PRAGMA foreign_keys=ON');
  // Existing local databases are upgraded in place; missing dates remain unknown.
  const columns=db.prepare('PRAGMA table_info(missions)').all().map(x=>x.name);
+ const userColumns=db.prepare('PRAGMA table_info(users)').all().map(x=>x.name);
+ if(!userColumns.includes('name')) db.exec('ALTER TABLE users ADD COLUMN name TEXT');
  if(!columns.includes('application_start')) db.exec('ALTER TABLE missions ADD COLUMN application_start TEXT');
  if(!columns.includes('application_end')) db.exec('ALTER TABLE missions ADD COLUMN application_end TEXT');
  if(!columns.includes('archived_at')) db.exec('ALTER TABLE missions ADD COLUMN archived_at TEXT');
@@ -130,7 +132,7 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
    if(method==='GET' && p==='/api/activities') return {status:200,data:all("SELECT * FROM missions WHERE status='open'").filter(isDiscoverable).map(m=>({id:String(m.id),title:m.title,minutes:0,points:0}))};
    if(method==='POST' && p==='/api/auth/login') {
     const user=get('SELECT * FROM users WHERE email=?',String(body.email||'')); if(!user || !verify(String(body.password||''),user.password_hash)) throw err(401,'로그인 실패','UNAUTHORIZED');
-    const payload=`${user.id}.${Math.floor(Date.now()/1000)+3600}`; return {status:200,data:{token:`${payload}.${sign(payload)}`,role:user.role,user_id:user.id,school_id:user.school_id,expires_in:3600}};
+    const payload=`${user.id}.${Math.floor(Date.now()/1000)+3600}`; return {status:200,data:{token:`${payload}.${sign(payload)}`,role:user.role,user_id:user.id,school_id:user.school_id,name:user.name||null,expires_in:3600}};
    }
    const authenticated=auth(authorization);const publicRead=method==='GET' && ['/api/missions','/api/league','/api/community-progress'].includes(p);if(!authenticated&&!publicRead)throw err(401,'로그인이 필요합니다.','UNAUTHORIZED');const u=authenticated||{role:'guest'};
    // Application claims are personal records, and never imply institutional confirmation.
