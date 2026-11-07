@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {participationTotals} from './modules/league/participation.js';
 import {categories,migrateWeights} from './modules/categories.js';
 export {categories} from './modules/categories.js';
-import {fetchNotice} from './modules/public-notices/read.js';
+import {fetchNotice,diagnoseNoticeConnection} from './modules/public-notices/read.js';
 import {searchOfficialSources,classifyNotice,generateSuggestion} from './modules/public-notices/search.js';
 import {verifiedCandidateUrls,noticeAssessment} from './modules/public-notices/automation.js';
 
@@ -185,6 +185,7 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
     role(u,'student');return {status:200,data:all("SELECT e.id,e.user_id,e.mission_id,e.created_at AS clicked_at FROM events e JOIN missions m ON m.id=e.mission_id WHERE e.user_id=? AND e.event_type='click' AND m.archived_at IS NULL ORDER BY e.id",u.id)};
    }
    if(method==='GET' && p==='/api/missions') return {status:200,data:discoverableMissions().map(m=>{const parsed=parseMission(m);if(u.role!=='guest')return parsed;const {id,title,source_url,apply_url,eligibility,application_period,application_note,completion_policy,weights,is_demo,application_start,application_end}=parsed;return {id,title,source_url,apply_url,eligibility,application_period,application_note,completion_policy,weights,is_demo,application_start,application_end};})};
+   if(method==='POST' && p==='/api/admin/notice-connection-check') {role(u,'admin');try{return {status:200,data:await (adapters.diagnoseNoticeConnection||diagnoseNoticeConnection)(body.url)};}catch(e){throw err(400,e.message);}}
    if(method==='POST' && p==='/api/admin/public-notice/preview') {role(u,'admin');let notice;try{notice=await fetchNotice(body.url);}catch(e){throw err(400,e.message);}const suggestion=await ai('structure',{notice:notice.notice});return {status:200,data:{notice,suggestion}};}
    if(method==='POST' && p==='/api/ai/structure') {role(u,'admin','partner'); if(typeof body.notice!=='string'||!body.notice.trim()||body.notice.length>12000) throw err(400,'공고는 1~12000자여야 합니다.'); return {status:200,data:await ai('structure',{notice:body.notice})};}
    if(method==='POST' && p==='/api/ai/recommend') {role(u,'student'); const missions=discoverableMissions().map(parseMission).map(({id,title,eligibility,application_period,weights})=>({id,title,eligibility,application_period,weights})); return {status:200,data:await ai('recommend',{profile:body.profile||{},missions})};}

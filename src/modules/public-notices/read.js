@@ -43,3 +43,13 @@ export async function fetchNotice(input,{fetcher=fetch}={}){
  const bytes=Buffer.concat(chunks.map(chunk=>Buffer.from(chunk)));const charset=(response.headers.get('content-type')||'').match(/charset\s*=\s*([^;\s]+)/i)?.[1]?.replace(/["']/g,'').toLowerCase()||'utf-8';let html;try{html=new TextDecoder(charset).decode(bytes);}catch{throw new Error('공고 페이지 문자 형식을 읽지 못했습니다.');}
  return extractNotice(html,source);
 }
+
+// Admin-only caller; this checks a canonical official URL without importing data.
+export async function diagnoseNoticeConnection(input,{fetcher=fetch,timeoutMs=30000,clock=Date.now}={}){
+ const source=canonicalNoticeUrl(input);const start=clock();
+ try{
+  const response=await fetcher(source.url,{method:'GET',redirect:'error',headers:{Accept:'text/html,application/xhtml+xml','User-Agent':'DandiLocalDemo/1.0'},signal:AbortSignal.timeout(timeoutMs)});
+  if(response.body)await response.body.cancel().catch(()=>{});
+  return {source:source.kind,reachable:true,http_status:response.status,elapsed_ms:clock()-start};
+ }catch(error){return {source:source.kind,reachable:false,reason:networkFailureReason(error),elapsed_ms:clock()-start};}
+}
