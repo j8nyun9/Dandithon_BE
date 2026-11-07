@@ -1,4 +1,5 @@
 import {networkFailureReason} from './network-errors.js';
+import {request as httpsRequest} from 'node:https';
 const sources={
  'www.vms.or.kr':{path:'/partspace/recruitView.do',id:'seq',kind:'VMS'},
  'vms.or.kr':{path:'/partspace/recruitView.do',id:'seq',kind:'VMS'},
@@ -45,11 +46,14 @@ export async function fetchNotice(input,{fetcher=fetch}={}){
 }
 
 // Admin-only caller; this checks a canonical official URL without importing data.
-export async function diagnoseNoticeConnection(input,{fetcher=fetch,timeoutMs=30000,clock=Date.now}={}){
+export async function diagnoseNoticeConnection(input,{fetcher,timeoutMs=30000,clock=Date.now}={}){
  const source=canonicalNoticeUrl(input);const start=clock();
  try{
-  const response=await fetcher(source.url,{method:'GET',redirect:'error',headers:{Accept:'text/html,application/xhtml+xml','User-Agent':'DandiLocalDemo/1.0'},signal:AbortSignal.timeout(timeoutMs)});
-  if(response.body)await response.body.cancel().catch(()=>{});
-  return {source:source.kind,reachable:true,http_status:response.status,elapsed_ms:clock()-start};
+  const options={method:'GET',headers:{Accept:'text/html,application/xhtml+xml','User-Agent':'DandiLocalDemo/1.0'},signal:AbortSignal.timeout(timeoutMs)};
+  const status=fetcher?await (async()=>{const response=await fetcher(source.url,{...options,redirect:'error'});if(response.body)await response.body.cancel().catch(()=>{});return response.status;})():await new Promise((resolve,reject)=>{
+   const request=httpsRequest(source.url,options,response=>{const code=response.statusCode;response.destroy();resolve(code);});
+   request.on('error',reject);request.end();
+  });
+  return {source:source.kind,reachable:true,http_status:status,elapsed_ms:clock()-start};
  }catch(error){return {source:source.kind,reachable:false,reason:networkFailureReason(error),elapsed_ms:clock()-start};}
 }
