@@ -17,8 +17,13 @@ try {
  await admin.query(`SET LOCAL search_path TO "${schema}"`);
  await admin.query(readFileSync(fileURLToPath(new URL('../db/postgres-schema.sql',import.meta.url)),'utf8'));
  await admin.query('COMMIT');
- const connect=()=>new PostgresSyncDatabase(process.env.DATABASE_URL,{schema});
- app=createApp(':memory:',{db:connect()});app.seed();
+ const connect=()=>new PostgresSyncDatabase(process.env.DATABASE_URL,{schema,testMode:true});
+ const connection=connect();app=createApp(':memory:',{db:connection});app.seed();
+ connection.request('test-disconnect');
+ assert.equal(connection.prepare('SELECT 1 AS value').get().value,1);
+ connection.exec('BEGIN');connection.request('test-disconnect');
+ assert.throws(()=>connection.prepare('SELECT 1 AS value').get(),/진행 중인 처리가 취소/);
+ assert.equal(connection.prepare('SELECT 1 AS value').get().value,1);
  const login=async(email,password)=>{
   const r=await app.dispatch('POST','/api/auth/login',{email,password});assert.equal(r.status,200);return 'Bearer '+r.data.token;
  };

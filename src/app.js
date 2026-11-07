@@ -131,7 +131,7 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
  async function dispatch(method,url,body={},authorization='') {
   try {
    const parsed=new URL(url,'http://localhost'), p=parsed.pathname, q=parsed.searchParams;
-   if(method==='GET' && p==='/api/health') return {status:200,data:{status:'ok'}};
+   if(method==='GET' && p==='/api/health') {try{get('SELECT 1 AS ok');return {status:200,data:{status:'ok'}};}catch{return {status:503,error:{code:'DATABASE_UNAVAILABLE',message:'데이터베이스 연결을 확인하고 있습니다. 잠시 후 다시 시도해 주세요.'}};}}
    if(method==='GET' && p==='/api/activities') return {status:200,data:all("SELECT * FROM missions WHERE status='open'").filter(isDiscoverable).map(m=>({id:String(m.id),title:m.title,minutes:0,points:0}))};
    if(method==='POST' && p==='/api/auth/login') {
     const user=get('SELECT * FROM users WHERE email=?',String(body.email||'')); if(!user || !verify(String(body.password||''),user.password_hash)) throw err(401,'로그인 실패','UNAUTHORIZED');

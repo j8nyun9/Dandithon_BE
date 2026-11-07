@@ -8,10 +8,19 @@ pg.types.setTypeParser(20, value => {
  if(!Number.isSafeInteger(n)) throw Error('정수 범위를 초과했습니다.');
  return n;
 });
-const client=new pg.Client({connectionString:workerData.connectionString,ssl:{rejectUnauthorized:true},connectionTimeoutMillis:10000,statement_timeout:10000});
-client.on('error',()=>{});
+let client=null;
 let connected=false;
 let inTransaction=false;
+const connectionError=e=>/^(08|57P0)/.test(String(e?.code||''))||['ECONNRESET','EPIPE','ETIMEDOUT','ECONNREFUSED'].includes(e?.code)||/connection terminated|connection (?:is )?closed|connection error|not queryable|socket hang up/i.test(String(e?.message||''));
+async function connect(){
+ if(connected) return;
+ if(client) await client.end().catch(()=>{});
+ const next=new pg.Client({connectionString:workerData.connectionString,ssl:{rejectUnauthorized:true},connectionTimeoutMillis:10000,statement_timeout:10000});
+ client=next;
+ next.on('error',()=>{if(client===next)connected=false;});
+ next.on('end',()=>{if(client===next)connected=false;});
+ await next.connect();connected=true;
+}
 
 function translate(sql,kind) {
  let index=0;
@@ -22,12 +31,12 @@ function translate(sql,kind) {
  if(kind==='run' && /^\s*INSERT INTO\s+(organizations|missions|users)\b/i.test(query)) query+=' RETURNING id';
  return query;
 }
-parentPort.on('message',async message=>{
- const state=new Int32Array(message.shared,0,2), out=new Uint8Array(message.shared,8);
- let result;
- try {
-  if(!connected){await client.connect();connected=true;}
-  if(message.kind==='close'){await client.end();result={ok:true,value:null};}
+async function execute(message){
+  if(message.kind==='close'){if(client)await client.end().catch(()=>{});connected=false;return {ok:true,value:null};}
+  if(!connected&&inTransaction){inTransaction=false;throw Error('데이터베이스 연결이 끊겨 진행 중인 처리가 취소되었습니다. 다시 시도해 주세요.');}
+  await connect();
+  let result;
+  if(message.kind==='test-disconnect'&&workerData.testMode){await client.end();connected=false;return {ok:true,value:null};}
   else if(message.kind==='exec' && (/^\s*PRAGMA\s/i.test(message.sql)||/^\s*CREATE TABLE\s/i.test(message.sql))) result={ok:true,value:null};
   else if(message.kind==='exec' && /^\s*(BEGIN|COMMIT|ROLLBACK)\s*$/i.test(message.sql)) {
    const command=message.sql.trim().toUpperCase();
@@ -48,7 +57,22 @@ parentPort.on('message',async message=>{
     result={ok:true,value};
    } catch(error){if(standalone) await client.query('ROLLBACK').catch(()=>{});throw error;}
   }
- } catch(error) {result={ok:false,error:String(error.message||'database error').slice(0,500)};}
+ return result;
+}
+parentPort.on('message',async message=>{
+ const state=new Int32Array(message.shared,0,2), out=new Uint8Array(message.shared,8);
+ let result;
+ const wasInTransaction=inTransaction;
+ try {result=await execute(message);}
+ catch(error) {
+  if(connectionError(error)){
+   connected=false;inTransaction=false;
+   // Retry read-only statements once. Never replay writes or a lost transaction.
+   const canRetry=!wasInTransaction&&((['get','all'].includes(message.kind)&&/^\s*(SELECT\b|PRAGMA table_info\()/i.test(message.sql))||(message.kind==='exec'&&/^\s*BEGIN\s*$/i.test(message.sql)));
+   if(canRetry)try{result=await execute(message);}catch(retryError){error=retryError;if(connectionError(error)){connected=false;inTransaction=false;}}
+  }
+  if(!result)result={ok:false,error:String(error.message||'database error').slice(0,500)};
+ }
  let encoded=new TextEncoder().encode(JSON.stringify(result));
  if(encoded.length>out.length) encoded=new TextEncoder().encode(JSON.stringify({ok:false,error:'데이터베이스 응답 크기가 허용 범위를 초과했습니다.'}));
  out.set(encoded);Atomics.store(state,1,encoded.length);Atomics.store(state,0,1);Atomics.notify(state,0);
