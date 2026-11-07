@@ -6,4 +6,5 @@ dist/
 
 *.sqlite
 *.sqlite-*
+.deployment-credentials
 .env

@@ -1,0 +1,54 @@
+import { parentPort, workerData } from 'node:worker_threads';
+import pg from 'pg';
+
+// SQLite API compatibility for the single-process demo. Network I/O runs here,
+// but callers wait synchronously; this is not a scalable production adapter.
+pg.types.setTypeParser(20, value => {
+ const n=Number(value);
+ if(!Number.isSafeInteger(n)) throw Error('정수 범위를 초과했습니다.');
+ return n;
+});
+const client=new pg.Client({connectionString:workerData.connectionString,ssl:{rejectUnauthorized:true},connectionTimeoutMillis:10000,statement_timeout:10000});
+client.on('error',()=>{});
+let connected=false;
+let inTransaction=false;
+
+function translate(sql,kind) {
+ let index=0;
+ let query=sql.replace(/\?/g,() => '$'+(++index));
+ const ignored=/^\s*INSERT OR IGNORE INTO\s/i.test(query);
+ if(ignored) query=query.replace(/INSERT OR IGNORE INTO/i,'INSERT INTO')+' ON CONFLICT DO NOTHING';
+ query=query.replace(/\bCURRENT_TIMESTAMP\b/gi,'CURRENT_TIMESTAMP::text');
+ if(kind==='run' && /^\s*INSERT INTO\s+(organizations|missions|users)\b/i.test(query)) query+=' RETURNING id';
+ return query;
+}
+parentPort.on('message',async message=>{
+ const state=new Int32Array(message.shared,0,2), out=new Uint8Array(message.shared,8);
+ let result;
+ try {
+  if(!connected){await client.connect();connected=true;}
+  if(message.kind==='close'){await client.end();result={ok:true,value:null};}
+  else if(message.kind==='exec' && (/^\s*PRAGMA\s/i.test(message.sql)||/^\s*CREATE TABLE\s/i.test(message.sql))) result={ok:true,value:null};
+  else if(message.kind==='exec' && /^\s*(BEGIN|COMMIT|ROLLBACK)\s*$/i.test(message.sql)) {
+   const command=message.sql.trim().toUpperCase();
+   await client.query(command);
+   inTransaction=command==='BEGIN';
+   if(inTransaction) await client.query(`SET LOCAL search_path TO "${workerData.schema||'public'}"`);
+   result={ok:true,value:null};
+  } else {
+   const standalone=!inTransaction;
+   try {
+    if(standalone){await client.query('BEGIN');await client.query(`SET LOCAL search_path TO "${workerData.schema||'public'}"`);}
+    const response=/^\s*PRAGMA table_info\(missions\)/i.test(message.sql)
+     ?await client.query("SELECT column_name AS name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='missions'")
+     :await client.query(translate(message.sql,message.kind),message.params||[]);
+    if(standalone) await client.query('COMMIT');
+    const value=message.kind==='get'?(response.rows[0]??null):message.kind==='all'?response.rows:message.kind==='run'?{changes:response.rowCount,lastInsertRowid:response.rows[0]?.id??0}:null;
+    result={ok:true,value};
+   } catch(error){if(standalone) await client.query('ROLLBACK').catch(()=>{});throw error;}
+  }
+ } catch(error) {result={ok:false,error:String(error.message||'database error').slice(0,500)};}
+ let encoded=new TextEncoder().encode(JSON.stringify(result));
+ if(encoded.length>out.length) encoded=new TextEncoder().encode(JSON.stringify({ok:false,error:'데이터베이스 응답 크기가 허용 범위를 초과했습니다.'}));
+ out.set(encoded);Atomics.store(state,1,encoded.length);Atomics.store(state,0,1);Atomics.notify(state,0);
+});

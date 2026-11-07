@@ -4,7 +4,7 @@
  * separate policy and deliberately not applied here.
  */
 export function participationTotals(records) {
- const axes={volunteer:0,mentoring:0,community:0,sharing:0,scholarship:0,blood:0};
+ const axes={welfare:0,education:0,healthcare:0,blood:0,environment:0,culture:0};
  let completed=0;
  for(const record of records){
   if(record.status!=='approved') continue;
