@@ -2,7 +2,7 @@ const endpoint='https://api.openai.com/v1/responses';
 const modelDefault='gpt-4.1-mini';
 async function callOpenAI({apiKey,model,body,fetcher}){
  if(!apiKey)throw new Error('OpenAI API 키가 설정되지 않았습니다.');
- let response;try{response=await fetcher(endpoint,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'content-type':'application/json'},body:JSON.stringify({model:model||modelDefault,...body}),signal:AbortSignal.timeout(60000)});}catch{throw new Error('OpenAI API에 연결하지 못했습니다.');}
+ let response;try{response=await fetcher(endpoint,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'content-type':'application/json'},body:JSON.stringify({model:model||modelDefault,...body}),signal:AbortSignal.timeout(90000)});}catch{throw new Error('OpenAI API에 연결하지 못했습니다.');}
  if(!response.ok){
   let info={};try{info=(await response.json()).error||{};}catch{}
   const allowedCodes=new Set(['invalid_value','invalid_request_error','unsupported_value','unknown_parameter','missing_required_parameter','model_not_found','insufficient_quota','invalid_api_key','rate_limit_exceeded','unsupported_parameter']);
@@ -13,11 +13,11 @@ async function callOpenAI({apiKey,model,body,fetcher}){
   const safe=raw.length<=240 && /^[\x20-\x7e]+$/.test(raw) && !/(secret|password|token|api.?key|sk-|bearer|https?:\/\/|@)/i.test(raw) && !raw.includes(apiKey) ? raw : '';
   throw new Error(`OpenAI API 요청이 실패했습니다 (HTTP ${response.status}${code?', 코드 '+code:''}${param?', 항목 '+param:''})${safe?' 상세: '+safe:''}`);
  }
- const data=await response.json();if(data.status!=='completed')throw new Error('OpenAI 응답이 완료되지 않았습니다.');return data;
+ const data=await response.json();if(data.status!=='completed'){const reason=data.incomplete_details?.reason;throw new Error(`OpenAI 응답이 완료되지 않았습니다${reason==='max_output_tokens'?' (응답 길이 제한)':''}.`);}return data;
 }
 function jsonText(data){const text=(data.output||[]).filter(x=>x.type==='message').flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('\n').trim();try{return JSON.parse(text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}catch{throw new Error('OpenAI 결과의 형식을 확인할 수 없습니다.');}}
 export async function searchOfficialSources({prompt,domains,apiKey,model,fetcher=fetch}){
- const data=await callOpenAI({apiKey,model:model||'gpt-6-luna',fetcher,body:{max_output_tokens:4096,tools:[{type:'web_search',filters:{allowed_domains:domains}}],tool_choice:'required',include:['web_search_call.action.sources'],input:prompt}});
+ const data=await callOpenAI({apiKey,model:model||'gpt-6-luna',fetcher,body:{max_output_tokens:4096,tools:[domains.length?{type:'web_search',filters:{allowed_domains:domains}}:{type:'web_search'}],tool_choice:'required',include:['web_search_call.action.sources'],input:prompt}});
  const citations=new Set();let searched=false;
  for(const block of data.output||[]){if(block.type==='web_search_call'){searched=true;for(const source of block.action?.sources||[])if(source.url)citations.add(source.url);}if(block.type==='message')for(const item of block.content||[])for(const a of item.annotations||[])if(a.type==='url_citation'&&a.url)citations.add(a.url);}
  if(!searched)throw new Error('OpenAI 웹 검색 결과를 확인할 수 없습니다.');
