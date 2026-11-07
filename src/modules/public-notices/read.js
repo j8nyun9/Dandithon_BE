@@ -1,3 +1,4 @@
+import {networkFailureReason} from './network-errors.js';
 const sources={
  'www.vms.or.kr':{path:'/partspace/recruitView.do',id:'seq',kind:'VMS'},
  'vms.or.kr':{path:'/partspace/recruitView.do',id:'seq',kind:'VMS'},
@@ -34,7 +35,7 @@ export function extractNotice(html,source){
 }
 export async function fetchNotice(input,{fetcher=fetch}={}){
  const source=canonicalNoticeUrl(input);let response;
- try{response=await fetcher(source.url,{method:'GET',redirect:'error',headers:{'Accept':'text/html,application/xhtml+xml','User-Agent':'DandiLocalDemo/1.0'},signal:AbortSignal.timeout(10000)});}catch{throw new Error('공식 사이트에 연결하지 못했습니다. 주소와 네트워크 또는 사이트 접근 제한을 확인해 주세요.');}
+ try{response=await fetcher(source.url,{method:'GET',redirect:'error',headers:{'Accept':'text/html,application/xhtml+xml','User-Agent':'DandiLocalDemo/1.0'},signal:AbortSignal.timeout(10000)});}catch(error){throw new Error(`공식 사이트에 연결하지 못했습니다 (${networkFailureReason(error)}). 주소와 네트워크 또는 사이트 접근 제한을 확인해 주세요.`);}
  if(!response.ok)throw new Error(`공식 사이트가 요청을 처리하지 않았습니다 (HTTP ${response.status}).`);
  if(!/^(text\/html|application\/xhtml\+xml)/i.test(response.headers.get('content-type')||''))throw new Error('공고 페이지 형식이 아닙니다.');
  const reader=response.body?.getReader();if(!reader)throw new Error('공고 응답이 비어 있습니다.');const chunks=[];let size=0;

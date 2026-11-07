@@ -1,8 +1,9 @@
+import {networkFailureReason} from './network-errors.js';
 const endpoint='https://api.openai.com/v1/responses';
 const modelDefault='gpt-4.1-mini';
 async function callOpenAI({apiKey,model,body,fetcher,allowPartial=false}){
  if(!apiKey)throw new Error('OpenAI API 키가 설정되지 않았습니다.');
- let response;try{response=await fetcher(endpoint,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'content-type':'application/json'},body:JSON.stringify({model:model||modelDefault,...body}),signal:AbortSignal.timeout(90000)});}catch{throw new Error('OpenAI API에 연결하지 못했습니다.');}
+ let response;try{response=await fetcher(endpoint,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'content-type':'application/json'},body:JSON.stringify({model:model||modelDefault,...body}),signal:AbortSignal.timeout(90000)});}catch(error){throw new Error(`OpenAI API에 연결하지 못했습니다 (${networkFailureReason(error)}).`);}
  if(!response.ok){
   let info={};try{info=(await response.json()).error||{};}catch{}
   const allowedCodes=new Set(['invalid_value','invalid_request_error','unsupported_value','unknown_parameter','missing_required_parameter','model_not_found','insufficient_quota','invalid_api_key','rate_limit_exceeded','unsupported_parameter']);
