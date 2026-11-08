@@ -17,7 +17,18 @@ test('공개 시즌 의연록은 승인자만 학교별 한 번 표시하고 개
   }
   const r=await app.dispatch('GET','/api/ledger?semester_id=1');assert.equal(r.status,200);assert.equal(r.data.participants.length,1);assert.equal(r.data.participants[0].name,'김명석');assert.equal(r.data.participants[0].school_name,'경북대학교');assert.equal(r.data.participants[0].approved_count,2);
   assert.deepEqual(Object.keys(r.data.participants[0]).sort(),['approved_count','name','school_id','school_name']);
+  assert.equal((await app.dispatch('GET','/api/community-progress?semester_id=1')).data.completed_count,2);
+  assert.equal((await app.dispatch('GET','/api/league?semester_id=1')).data.schools.find(s=>s.school_id===1).completed_count,2);
+  db.prepare("UPDATE verifications SET status='approved' WHERE user_id=2").run();
+  db.prepare('UPDATE users SET name=NULL WHERE id=2').run();
+  assert.equal((await app.dispatch('GET','/api/community-progress?semester_id=1')).data.completed_count,2);
+  assert.equal((await app.dispatch('GET','/api/league?semester_id=1')).data.schools.find(s=>s.school_id===2).completed_count,0);
+  db.prepare('UPDATE users SET name=? WHERE id=2').run('확인된학생');
+  assert.equal((await app.dispatch('GET','/api/community-progress?semester_id=1')).data.completed_count,3);
+  db.prepare("UPDATE users SET role='partner' WHERE id=2").run();
+  assert.equal((await app.dispatch('GET','/api/community-progress?semester_id=1')).data.completed_count,2);
   assert.equal((await app.dispatch('GET','/api/ledger?semester_id=999')).status,404);
   assert.equal((await app.dispatch('GET','/api/ledger?semester_id=bad')).status,400);
  } finally {app.close();}
 });
+

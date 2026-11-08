@@ -250,7 +250,7 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
    if(method==='GET' && p==='/api/community-progress') {
     const semester=Number(q.get('semester_id')||1);if(!Number.isSafeInteger(semester)||semester<1||!get('SELECT 1 FROM semesters WHERE id=?',semester)) throw err(400,'유효한 학기가 필요합니다.');
     // Do not expose blood-related activity in the public community aggregate.
-    const records=all("SELECT m.weights,m.contribution_value FROM verifications v JOIN missions m ON m.id=v.mission_id JOIN enrollments e ON e.user_id=v.user_id AND e.semester_id=m.semester_id WHERE v.status='approved' AND m.semester_id=?",semester).filter(r=>!Object.hasOwn(JSON.parse(r.weights),'blood'));
+    const records=all("SELECT m.weights,m.contribution_value FROM verifications v JOIN missions m ON m.id=v.mission_id JOIN enrollments e ON e.user_id=v.user_id AND e.semester_id=m.semester_id JOIN users eligible_user ON eligible_user.id=v.user_id AND eligible_user.role='student' AND eligible_user.name IS NOT NULL AND TRIM(eligible_user.name)<>'' WHERE v.status='approved' AND m.semester_id=?",semester).filter(r=>!Object.hasOwn(JSON.parse(r.weights),'blood'));
     const axes=Object.fromEntries(categories.filter(k=>k!=='blood').map(k=>[k,0]));
     for(const row of records) for(const [category,weight] of Object.entries(JSON.parse(row.weights))) axes[category]+=weight;
     for(const key of Object.keys(axes)) axes[key]=Math.round(axes[key]*10000)/10000;
@@ -260,7 +260,7 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
    if(method==='GET' && p==='/api/league') {
     const semester=Number(q.get('semester_id')||1);if(!Number.isSafeInteger(semester)||semester<1||!get('SELECT 1 FROM semesters WHERE id=?',semester))throw err(400,'유효한 학기가 필요합니다.');
     const schools=all('SELECT * FROM schools').map(s=>{
-     const records=all("SELECT v.status,m.weights,m.is_demo FROM verifications v JOIN missions m ON m.id=v.mission_id JOIN enrollments e ON e.user_id=v.user_id AND e.semester_id=m.semester_id WHERE m.semester_id=? AND e.school_id=?",semester,s.id).map(r=>({...r,weights:JSON.parse(r.weights)}));
+     const records=all("SELECT v.status,m.weights,m.is_demo FROM verifications v JOIN missions m ON m.id=v.mission_id JOIN enrollments e ON e.user_id=v.user_id AND e.semester_id=m.semester_id JOIN users eligible_user ON eligible_user.id=v.user_id AND eligible_user.role='student' AND eligible_user.name IS NOT NULL AND TRIM(eligible_user.name)<>'' WHERE m.semester_id=? AND e.school_id=?",semester,s.id).map(r=>({...r,weights:JSON.parse(r.weights)}));
      const raw=participationTotals(records),population=get('SELECT student_count,reference_year,source_url FROM school_semester_population WHERE school_id=? AND semester_id=?',s.id,semester);
      const scale=population?1000/population.student_count:null;
      const axes=Object.fromEntries(Object.entries(raw.axes).map(([key,value])=>[key,scale===null?0:Math.round(value*scale*10000)/10000]));
@@ -283,3 +283,4 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
  }
  return {dispatch,seed,startAutomation,runAutomation,assertPublicAccountsSafe,close:()=>{automationStopped=true;if(timer)clearTimeout(timer);db.close();}};
 }
+
