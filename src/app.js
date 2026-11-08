@@ -158,7 +158,7 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
     const user=get('SELECT * FROM users WHERE email=?',String(body.email||'')); if(!user || !verify(String(body.password||''),user.password_hash)) throw err(401,'로그인 실패','UNAUTHORIZED');
     const payload=`${user.id}.${Math.floor(Date.now()/1000)+3600}`; return {status:200,data:{token:`${payload}.${sign(payload)}`,role:user.role,user_id:user.id,school_id:user.school_id,name:user.name||null,expires_in:3600}};
    }
-   const authenticated=auth(authorization);const publicRead=method==='GET' && ['/api/missions','/api/league','/api/community-progress','/api/v1/schools'].includes(p);if(!authenticated&&!publicRead)throw err(401,'로그인이 필요합니다.','UNAUTHORIZED');const u=authenticated||{role:'guest'};
+   const authenticated=auth(authorization);const publicRead=method==='GET' && ['/api/missions','/api/league','/api/community-progress','/api/v1/schools','/api/ledger'].includes(p);if(!authenticated&&!publicRead)throw err(401,'로그인이 필요합니다.','UNAUTHORIZED');const u=authenticated||{role:'guest'};
    // Application claims are personal records, and never imply institutional confirmation.
    const discoverableMissions=()=>{
     const rows=openDiscoverableMissions();
@@ -167,6 +167,14 @@ export function createApp(path=process.env.DB_PATH || 'dandi.sqlite', adapters={
     return rows.filter(m=>!excluded.has(m.id));
    };
    // Versioned read contracts preserve existing endpoints and never expose password hashes.
+   if(method==='GET' && p==='/api/ledger') {
+    const semesterId=Number(q.get('semester_id')||1);
+    if(!Number.isSafeInteger(semesterId)||semesterId<1)throw err(400,'유효한 학기가 필요합니다.');
+    const semester=get('SELECT id,name FROM semesters WHERE id=?',semesterId);
+    if(!semester)throw err(404,'학기를 찾을 수 없습니다.','NOT_FOUND');
+    const participants=all(`SELECT u.name,s.id AS school_id,s.name AS school_name,COUNT(*) AS approved_count FROM verifications v JOIN users u ON u.id=v.user_id JOIN missions m ON m.id=v.mission_id JOIN enrollments e ON e.user_id=v.user_id AND e.semester_id=m.semester_id JOIN schools s ON s.id=e.school_id WHERE v.status='approved' AND m.semester_id=? AND u.role='student' AND u.name IS NOT NULL AND TRIM(u.name)<>'' GROUP BY u.id,u.name,s.id,s.name ORDER BY s.id,u.name,u.id`,semesterId);
+    return {status:200,data:{semester_id:semester.id,semester_name:semester.name,participants}};
+   }
    if(method==='GET' && p==='/api/v1/schools') {
     const semester=Number(q.get('semester_id')||1);if(!Number.isSafeInteger(semester)||semester<1||!get('SELECT 1 FROM semesters WHERE id=?',semester))throw err(400,'유효한 학기가 필요합니다.');
     return {status:200,data:all('SELECT s.id,s.name,p.student_count,p.reference_year,p.source_url FROM schools s LEFT JOIN school_semester_population p ON p.school_id=s.id AND p.semester_id=? ORDER BY s.id',semester).map(s=>({...s,reference_year:s.source_url===demoPopulationSource?null:s.reference_year,source_url:s.source_url===demoPopulationSource?null:s.source_url}))};
