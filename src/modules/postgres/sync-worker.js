@@ -11,11 +11,11 @@ pg.types.setTypeParser(20, value => {
 let client=null;
 let connected=false;
 let inTransaction=false;
-const connectionError=e=>/^(08|57P0)/.test(String(e?.code||''))||['ECONNRESET','EPIPE','ETIMEDOUT','ECONNREFUSED'].includes(e?.code)||/connection terminated|connection (?:is )?closed|connection error|not queryable|socket hang up/i.test(String(e?.message||''));
+const connectionError=e=>/^(08|57P0)/.test(String(e?.code||''))||['ECONNRESET','EPIPE','ETIMEDOUT','ECONNREFUSED'].includes(e?.code)||/connection terminated|connection (?:is )?closed|connection error|not queryable|socket hang up|query read timeout/i.test(String(e?.message||''));
 async function connect(){
  if(connected) return;
  if(client) await client.end().catch(()=>{});
- const next=new pg.Client({connectionString:workerData.connectionString,ssl:{rejectUnauthorized:true},connectionTimeoutMillis:10000,statement_timeout:10000});
+ const next=new pg.Client({connectionString:workerData.connectionString,ssl:{rejectUnauthorized:true},connectionTimeoutMillis:8000,statement_timeout:8000,query_timeout:8000});
  client=next;
  next.on('error',()=>{if(client===next)connected=false;});
  next.on('end',()=>{if(client===next)connected=false;});
@@ -55,7 +55,7 @@ async function execute(message){
     if(standalone) await client.query('COMMIT');
     const value=message.kind==='get'?(response.rows[0]??null):message.kind==='all'?response.rows:message.kind==='run'?{changes:response.rowCount,lastInsertRowid:response.rows[0]?.id??0}:null;
     result={ok:true,value};
-   } catch(error){if(standalone) await client.query('ROLLBACK').catch(()=>{});throw error;}
+   } catch(error){if(standalone&&!connectionError(error)) await client.query('ROLLBACK').catch(()=>{});throw error;}
   }
  return result;
 }
@@ -67,6 +67,7 @@ parentPort.on('message',async message=>{
  catch(error) {
   if(connectionError(error)){
    connected=false;inTransaction=false;
+   console.warn('[DB] 연결 오류 또는 조회 시간 초과: 연결을 다시 확인합니다.');
    // Retry read-only statements once. Never replay writes or a lost transaction.
    const canRetry=!wasInTransaction&&((['get','all'].includes(message.kind)&&/^\s*(SELECT\b|PRAGMA table_info\()/i.test(message.sql))||(message.kind==='exec'&&/^\s*BEGIN\s*$/i.test(message.sql)));
    if(canRetry)try{result=await execute(message);}catch(retryError){error=retryError;if(connectionError(error)){connected=false;inTransaction=false;}}

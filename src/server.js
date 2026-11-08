@@ -16,7 +16,7 @@ else {
   try {
    for await(const chunk of req) {size+=chunk.length;if(size>100000) throw new Error('too large');chunks.push(chunk);}
    const raw=Buffer.concat(chunks).toString(), body=raw?JSON.parse(raw):{};
-   const result=await app.dispatch(req.method,req.url,body,req.headers.authorization); res.statusCode=result.status;res.end(JSON.stringify(result.error?{error:result.error}:{data:result.data}));
+   const result=await app.dispatch(req.method,req.url,body,req.headers.authorization); res.statusCode=result.status;if(result.status>=500)console.error('[API] 요청 처리 실패',result.error?.code||'SERVER_ERROR');res.end(JSON.stringify(result.error?{error:result.error}:{data:result.data}));
   } catch {res.statusCode=400;res.end(JSON.stringify({error:{code:'BAD_REQUEST',message:'요청 형식 또는 크기 오류'}}));}
  }).listen(port,host,()=>{console.log(`단디 API: http://${host}:${port}`);if(process.env.DANDI_DISABLE_AUTOMATION!=='1')app.startAutomation();});
 }
