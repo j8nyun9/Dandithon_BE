@@ -11,6 +11,7 @@ export class PostgresSyncDatabase {
   const shared=new SharedArrayBuffer(4*1024*1024+8), state=new Int32Array(shared,0,2);
   this.worker.postMessage({kind,sql,params,shared});
   if(Atomics.wait(state,0,0,25000)==='timed-out'){
+   console.error('[DB] 응답 시간 초과: 데이터베이스 작업을 재시작합니다.');
    void this.worker.terminate();this.startWorker();
    throw Error('데이터베이스 응답 시간이 초과되었습니다. 다시 시도해 주세요.');
   }
