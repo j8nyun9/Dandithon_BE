@@ -12,12 +12,14 @@
 | GET | /api/missions/1 | 상세 및 조회 이벤트 |
 | POST | /api/missions/1/click | 학생 클릭 기록 및 공식 신청 URL. 클릭은 신청 아님 |
 | POST | /api/ai/structure | 관리자/기관 `{ "notice": "기관이 제공한 공고" }` → AI 구조화 제안 |
-| POST | /api/ai/recommend | 학생 `{ "profile": { "interests": ["education"] } }` → 등록된 미션 ID 추천 |
+| POST | /api/ai/recommend | 학생 `{ "profile": { "interests": ["education"] } }` → `{ "data": { "mode": "live" 또는 "mock", "result": { "recommendations": [{ "id": 1, "reason": "관심 분야와 관련된 활동이에요." }] }, "warning": "..." } }` |
 | POST | /api/missions | 관리자 미션 등록. 예시는 아래 |
 | POST | /api/missions/1/verification | 관리자/기관 실적 상태 변경. 예시는 아래 |
 | POST | /api/admin/import-csv | 관리자/기관 CSV 일괄 승인. 오류시 전부 롤백 |
 | GET | /api/league?semester_id=1 | 학교별 종합값과 여섯 축 |
 | GET | /api/partner/funnel?organization_id=1 | 소속 기관별 집계. 상태별 인원, 5명 미만 null |
+
+추천은 해당 학생의 관리자 승인 참여 이력을 유형별로 집계하고 요청에서 선택한 관심 유형과 함께 사용합니다. 가중치가 양수인 유형마다 활동 1회로 집계하며 삭제된 활동과 미승인 이력은 제외합니다. 관심 유형은 선택 사항이며 요청 시 전달하는 값으로 저장되지 않습니다. 추천 ID는 같은 사용자의 `/api/missions` 활동 ID와 일치합니다. AI 사용 불가 시 `mock`으로 관심 유형과 참여 이력에 따른 기본 추천을 반환합니다. 자격 및 실제 신청 가능 여부는 공식 공고를 확인해야 합니다.
 
 ### 데이터 계약 v1
 
